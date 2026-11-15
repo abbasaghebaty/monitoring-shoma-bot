@@ -70,21 +70,21 @@ function localDateTimeToIso(dayKey, hour, minute, tz) {
 }
 
 function parseAttendanceTimestamp(args, tz) {
-  if (!args?.length || args.length > 2) {
-    throw new Error("قالب صحیح: /in 14:38 یا /in 14:38 1405/08/24");
+  // کل متن آرگومان‌ها را بررسی می‌کنیم؛ فاصله و علائم نگارشی فقط جداکننده‌اند.
+  // نمونه‌های قابل قبول: 16:00، 16: 00، 16 00، 1405.8.20، 1405/08/20
+  const numbers = normalizeDigits((args || []).join(" ")).match(/\d+/g) || [];
+  if (numbers.length !== 2 && numbers.length !== 5) {
+    throw new Error("ساعت را وارد کن و در صورت نیاز تاریخ را هم بنویس؛ نمونه: /in 16:00 1405.8.20");
   }
 
-  const time = normalizeDigits(args[0]);
-  const timeMatch = time.match(/^(\d{1,2}):(\d{2})$/);
-  if (!timeMatch) throw new Error("ساعت را با قالب ۲۴ ساعته HH:mm وارد کن؛ نمونه: 14:38");
-
-  const hour = Number(timeMatch[1]);
-  const minute = Number(timeMatch[2]);
+  const hour = Number(numbers[0]);
+  const minute = Number(numbers[1]);
   if (hour > 23 || minute > 59) throw new Error("ساعت واردشده معتبر نیست.");
 
   const now = new Date();
   const todayKey = localDateKey(now.toISOString(), tz);
-  const dayKey = args[1] ? parseDateKey(args[1]) : todayKey;
+  const dateText = numbers.length === 5 ? numbers.slice(2).join("/") : null;
+  const dayKey = dateText ? parseDateKey(dateText) : todayKey;
 
   if (dayKey > todayKey) throw new Error("ثبت ساعت برای تاریخ آینده مجاز نیست.");
 
