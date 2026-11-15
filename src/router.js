@@ -56,6 +56,28 @@ export async function routeUpdate(update, env) {
   const user = await getUser(env, msg.from.id);
   const chatId = msg.chat.id;
   if (!user || !user.is_active) return sendMessage(env, chatId, "⛔ حساب شما در سیستم ثبت نشده یا غیرفعال است.");
+
+  // اجازه می‌دهد چند دستور حضور و غیاب در یک پیام چندخطی ارسال شوند.
+  const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    const attendanceLines = lines.map((line) => {
+      const match = line.match(/^(\/in|\/out)(?:@\w+)?\s*(.*)$/i);
+      if (!match) return null;
+      return {
+        command: match[1].toLowerCase(),
+        args: match[2].trim().split(/\s+/).filter(Boolean),
+      };
+    });
+
+    if (attendanceLines.every(Boolean)) {
+      for (const item of attendanceLines) {
+        const handler = item.command === "/in" ? handleCheckIn : handleCheckOut;
+        await handler({ env, msg, args: item.args, user, chatId });
+      }
+      return;
+    }
+  }
+
   const ctx = { env, msg, args, user, chatId };
   const entry = COMMANDS.find((item) => item.names.includes(fullText) || item.names.includes(cmd));
   if (!entry) {
