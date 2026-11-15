@@ -2,7 +2,7 @@ import { sendMessage } from "../telegram.js";
 import { getOpenShift, getOpenShiftOnDate, checkIn, checkOut, replaceDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
 import { formatTime, formatDuration, formatToman, formatDate, startOfLocalDayIso, startOfLocalMonthIso, localDateKey } from "../utils/time.js";
 
-const HOURLY_RATE_TOMAN = 16000;
+export const HOURLY_RATE_TOMAN = 16000;
 
 function employeeOnly(user) {
   return user?.role === "employee";
