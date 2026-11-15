@@ -96,10 +96,6 @@ function parseAttendanceTimestamp(args, tz) {
   return at;
 }
 
-function timestampError(error) {
-  return sendMessage(null, null, error.message);
-}
-
 export async function handleCheckIn({ env, chatId, user, args = [] }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
   let at;
