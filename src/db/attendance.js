@@ -31,6 +31,16 @@ export async function checkOut(env, shift, at = new Date().toISOString()) {
   return { now: at, minutes };
 }
 
+export async function replaceDayAttendance(env, telegramId, dayStartIso, dayEndIso, shifts) {
+  const statements = [
+    env.DB.prepare("DELETE FROM attendance WHERE telegram_id = ? AND check_in >= ? AND check_in < ?").bind(telegramId, dayStartIso, dayEndIso),
+    ...shifts.map((shift) => env.DB.prepare(
+      "INSERT INTO attendance (telegram_id, check_in, check_out, duration_minutes) VALUES (?, ?, ?, ?)"
+    ).bind(telegramId, shift.check_in, shift.check_out, shift.duration_minutes)),
+  ];
+  await env.DB.batch(statements);
+}
+
 export async function getAttendanceSince(env, sinceIso) {
   const { results } = await env.DB.prepare(
     `SELECT a.telegram_id, a.check_in, a.check_out, a.duration_minutes, u.full_name
