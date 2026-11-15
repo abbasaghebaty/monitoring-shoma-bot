@@ -1,5 +1,5 @@
 import { sendMessage } from "../telegram.js";
-import { getOpenShift, getOpenShiftOnDate, checkIn, updateCheckIn, checkOut, todayMinutes, workedMinutesSince } from "../db/attendance.js";
+import { getOpenShift, getOpenShiftOnDate, checkIn, updateCheckIn, checkOut, replaceDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
 import { formatTime, formatDuration, formatToman, formatDate, startOfLocalDayIso, startOfLocalMonthIso, localDateKey } from "../utils/time.js";
 
 const HOURLY_RATE_TOMAN = 16000;
@@ -67,6 +67,39 @@ function localDateTimeToIso(dayKey, hour, minute, tz) {
   );
   const offset = represented - guess.getTime();
   return new Date(guess.getTime() - offset).toISOString();
+}
+
+export async function handleReplaceAttendance({ env, chatId, user, commands = [] }) {
+  if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
+  const tz = env.TIMEZONE || "Asia/Tehran";
+  try {
+    if (!commands.length) throw new Error("دستورهای ورود و خروج را در یک پیام بفرست.");
+    const parsedCommands = commands.map((command) => ({ type: command.command, parsed: parseAttendanceTimestamp(command.args, tz) }));
+    if (parsedCommands.some((item) => !item.parsed.hasExplicitDate)) throw new Error("برای جایگزینی برنامه یک تاریخ، تاریخ را در تمام دستورها بنویس.");
+    const dayKey = parsedCommands[0].parsed.dayKey;
+    if (parsedCommands.some((item) => item.parsed.dayKey !== dayKey)) throw new Error("تمام دستورهای یک پیام باید مربوط به یک تاریخ باشند.");
+    if (parsedCommands.length % 2 !== 0) throw new Error("برای هر ورود باید خروج همان شیفت هم در همین پیام باشد؛ اطلاعات قبلی تغییری نکرد.");
+    const shifts = [];
+    for (let i = 0; i < parsedCommands.length; i += 2) {
+      const entry = parsedCommands[i];
+      const exit = parsedCommands[i + 1];
+      if (entry.type !== "/in" || exit.type !== "/out") throw new Error("ترتیب هر شیفت باید ابتدا /in و سپس /out باشد؛ اطلاعات قبلی تغییری نکرد.");
+      const start = new Date(entry.parsed.at).getTime();
+      const end = new Date(exit.parsed.at).getTime();
+      if (end <= start) throw new Error("زمان خروج هر شیفت باید بعد از ورود همان شیفت باشد؛ اطلاعات قبلی تغییری نکرد.");
+      if (shifts.length && start <= new Date(shifts[shifts.length - 1].check_out).getTime()) throw new Error("شیفت‌ها نباید با هم هم‌پوشانی داشته باشند؛ اطلاعات قبلی تغییری نکرد.");
+      shifts.push({ check_in: entry.parsed.at, check_out: exit.parsed.at, duration_minutes: Math.round((end - start) / 60000) });
+    }
+    const [year, month, day] = dayKey.split("-").map(Number);
+    const next = new Date(Date.UTC(year, month - 1, day + 1, 12)).toISOString().slice(0, 10);
+    const dayStart = localDateTimeToIso(dayKey, 0, 0, tz);
+    const dayEnd = localDateTimeToIso(next, 0, 0, tz);
+    await replaceDayAttendance(env, user.telegram_id, dayStart, dayEnd, shifts);
+    const totalMinutes = shifts.reduce((sum, shift) => sum + shift.duration_minutes, 0);
+    return sendMessage(env, chatId, `✅ برنامه کاری ${formatDate(shifts[0].check_in, tz)} جایگزین شد.\\n🔁 تعداد شیفت‌ها: ${shifts.length}\\n⏱ مجموع کارکرد: ${formatDuration(totalMinutes)}`);
+  } catch (error) {
+    return sendMessage(env, chatId, `⚠️ ${error.message}\\nنمونه: /in 16:00 1405.8.20\\n/out 21:30 1405.8.20`);
+  }
 }
 
 function parseAttendanceTimestamp(args, tz) {
