@@ -1,5 +1,5 @@
 import { sendMessage } from "../telegram.js";
-import { getOpenShift, checkIn, checkOut, todayMinutes, workedMinutesSince } from "../db/attendance.js";
+import { getOpenShift, getOpenShiftOnDate, checkIn, updateCheckIn, checkOut, todayMinutes, workedMinutesSince } from "../db/attendance.js";
 import { formatTime, formatDuration, formatToman, formatDate, startOfLocalDayIso, startOfLocalMonthIso, localDateKey } from "../utils/time.js";
 
 const HOURLY_RATE_TOMAN = 16000;
@@ -70,8 +70,6 @@ function localDateTimeToIso(dayKey, hour, minute, tz) {
 }
 
 function parseAttendanceTimestamp(args, tz) {
-  // کل متن آرگومان‌ها را بررسی می‌کنیم؛ فاصله و علائم نگارشی فقط جداکننده‌اند.
-  // نمونه‌های قابل قبول: 16:00، 16: 00، 16 00، 1405.8.20، 1405/08/20
   const numbers = normalizeDigits((args || []).join(" ")).match(/\d+/g) || [];
   if (numbers.length !== 2 && numbers.length !== 5) {
     throw new Error("ساعت را وارد کن و در صورت نیاز تاریخ را هم بنویس؛ نمونه: /in 16:00 1405.8.20");
@@ -83,8 +81,8 @@ function parseAttendanceTimestamp(args, tz) {
 
   const now = new Date();
   const todayKey = localDateKey(now.toISOString(), tz);
-  const dateText = numbers.length === 5 ? numbers.slice(2).join("/") : null;
-  const dayKey = dateText ? parseDateKey(dateText) : todayKey;
+  const hasExplicitDate = numbers.length === 5;
+  const dayKey = hasExplicitDate ? parseDateKey(numbers.slice(2).join("/")) : todayKey;
 
   if (dayKey > todayKey) throw new Error("ثبت ساعت برای تاریخ آینده مجاز نیست.");
 
@@ -92,38 +90,53 @@ function parseAttendanceTimestamp(args, tz) {
   if (new Date(at).getTime() > now.getTime()) {
     throw new Error("زمان واردشده در آینده است و امکان ثبت آن وجود ندارد.");
   }
-  return at;
+  return { at, dayKey, hasExplicitDate };
 }
 
 export async function handleCheckIn({ env, chatId, user, args = [] }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
-  let at;
+  const tz = env.TIMEZONE || "Asia/Tehran";
+  let parsed;
   try {
-    at = args.length ? parseAttendanceTimestamp(args, env.TIMEZONE || "Asia/Tehran") : new Date().toISOString();
+    parsed = args.length ? parseAttendanceTimestamp(args, tz) : { at: new Date().toISOString(), dayKey: localDateKey(new Date().toISOString(), tz), hasExplicitDate: false };
   } catch (error) {
     return sendMessage(env, chatId, `⚠️ ${error.message}\nنمونه: /in 14:38 1405/08/24`);
   }
-  if (await getOpenShift(env, user.telegram_id)) {
-    return sendMessage(env, chatId, "⚠️ ورود قبلاً ثبت شده و هنوز خروج ثبت نکرده‌اید.");
+
+  const [year, month, day] = parsed.dayKey.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1, 12)).toISOString().slice(0, 10);
+  const dayStart = localDateTimeToIso(parsed.dayKey, 0, 0, tz);
+  const dayEnd = localDateTimeToIso(next, 0, 0, tz);
+  const sameDayOpenShift = await getOpenShiftOnDate(env, user.telegram_id, dayStart, dayEnd);
+
+  if (sameDayOpenShift) {
+    await updateCheckIn(env, sameDayOpenShift, parsed.at);
+    return sendMessage(env, chatId, `🔵 ساعت ورود همان روز به‌روزرسانی شد\n🕒 ${formatTime(parsed.at, tz)}`);
   }
-  const savedAt = await checkIn(env, user.telegram_id, at);
-  return sendMessage(env, chatId, `🔵 ورود ثبت شد\n🕒 ${formatTime(savedAt, env.TIMEZONE)}`);
+
+  const savedAt = await checkIn(env, user.telegram_id, parsed.at);
+  return sendMessage(env, chatId, `🔵 ورود ثبت شد\n🕒 ${formatTime(savedAt, tz)}`);
 }
 
 export async function handleCheckOut({ env, chatId, user, args = [] }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
-  let at;
+  const tz = env.TIMEZONE || "Asia/Tehran";
+  let parsed;
   try {
-    at = args.length ? parseAttendanceTimestamp(args, env.TIMEZONE || "Asia/Tehran") : new Date().toISOString();
+    parsed = args.length ? parseAttendanceTimestamp(args, tz) : { at: new Date().toISOString(), dayKey: localDateKey(new Date().toISOString(), tz) };
   } catch (error) {
     return sendMessage(env, chatId, `⚠️ ${error.message}\nنمونه: /out 18:05 1405/08/24`);
   }
-  const shift = await getOpenShift(env, user.telegram_id);
-  if (!shift) return sendMessage(env, chatId, "⚠️ ورود بازی برای ثبت خروج ندارید.");
-  if (new Date(at).getTime() <= new Date(shift.check_in).getTime()) {
+  const [year, month, day] = parsed.dayKey.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1, 12)).toISOString().slice(0, 10);
+  const dayStart = localDateTimeToIso(parsed.dayKey, 0, 0, tz);
+  const dayEnd = localDateTimeToIso(next, 0, 0, tz);
+  const shift = await getOpenShiftOnDate(env, user.telegram_id, dayStart, dayEnd);
+  if (!shift) return sendMessage(env, chatId, "⚠️ برای این تاریخ ورود بازی جهت ثبت خروج پیدا نشد.");
+  if (new Date(parsed.at).getTime() <= new Date(shift.check_in).getTime()) {
     return sendMessage(env, chatId, "⚠️ زمان خروج باید بعد از زمان ورود همان شیفت باشد.");
   }
-  const { now, minutes } = await checkOut(env, shift, at);
+  const { now, minutes } = await checkOut(env, shift, parsed.at);
   return sendMessage(env, chatId, `🔴 خروج ثبت شد\n🕒 ${formatTime(now, env.TIMEZONE)}\n⏱ مدت این شیفت: ${formatDuration(minutes)}`);
 }
 
