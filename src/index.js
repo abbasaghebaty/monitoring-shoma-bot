@@ -1,9 +1,9 @@
 import { routeUpdate } from "./router.js";
+import { HOURLY_RATE_TOMAN } from "./handlers/attendance.js";
 import { workedMinutesSince } from "./db/attendance.js";
 import { startOfLocalMonthIso, formatToman } from "./utils/time.js";
 
 const PERSONAL_EMPLOYEE_NAME = "عباس";
-const HOURLY_RATE_TOMAN = 16000;
 
 async function handleMonthlyIncomeApi(request, env) {
   if (!env.ACCOUNTING_API_TOKEN) {
