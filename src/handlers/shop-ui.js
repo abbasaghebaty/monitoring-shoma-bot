@@ -10,6 +10,12 @@ const sessionKey = (id) => `shop-session:${id}`;
 const admin = (env, id) => String(env.ADMIN_IDS || env.OWNER_ID || "")
   .split(",").map((x) => x.trim()).filter(Boolean).includes(String(id));
 const DANGER_WORDS = ["لغو", "انصراف"];
+const ADMIN_STAGES = new Set([
+  "product_add", "product_sell", "product_buy", "product_confirm", "product_edit",
+  "purchase_date", "purchase_supplier", "purchase_lines", "purchase_confirm",
+  "debtpay_id", "debtpay_method", "debtpay_amount",
+  "price_id", "price_sell", "price_consumer",
+]);
 const btn = (text, data) => {
   const b = { text, callback_data: data };
   if (DANGER_WORDS.some((w) => text.includes(w))) b.style = "danger";
@@ -199,6 +205,10 @@ export async function handleShopText({ env, msg }) {
   const uid = msg.from.id, chatId = msg.chat.id, text = msg.text.trim();
   const state = await getSession(env, uid);
   if (!state) return false;
+  if (ADMIN_STAGES.has(state.stage) && !requireAdmin(env, uid)) {
+    await dropSession(env, uid);
+    return say(env, chatId, "⛔ دسترسی مدیر لازم است؛ نشست قبلی لغو شد.");
+  }
   if (state.stage === "sale_input") {
     state.parsedItems = parseFreeLines(text);
     state.cursor = 0; state.items = [];
@@ -287,6 +297,10 @@ export async function handleShopCallback({ env, callback }) {
   const adminActions = new Set(["sh:menu:products","sh:menu:product_add","sh:menu:purchase","sh:menu:debtpay","sh:menu:customers","sh:menu:price","sh:menu:report","sh:product_save","sh:product_edit"]);
   if (adminActions.has(data) && !admin(env, uid)) return say(env, chatId, "⛔ دسترسی مدیر لازم است.");
   let state = await getSession(env, uid);
+  if (state && ADMIN_STAGES.has(state.stage) && !requireAdmin(env, uid)) {
+    await dropSession(env, uid);
+    return say(env, chatId, "⛔ دسترسی مدیر لازم است؛ نشست قبلی لغو شد.");
+  }
   if (data === "sh:x") {
     await dropSession(env, uid);
     const edited = await editMessage(env, chatId, callback.message.message_id, "عملیات لغو شد.", { reply_markup: { inline_keyboard: [] } });
