@@ -1,7 +1,7 @@
 import { sendMessage } from "./telegram.js";
 import { getUser, ensureKnownUsers } from "./db/users.js";
 import { handleStart, handleHelp } from "./handlers/start.js";
-import { handleCheckIn, handleCheckOut, handleStatus } from "./handlers/attendance.js";
+import { handleCheckIn, handleCheckOut, handleReplaceAttendance, handleStatus } from "./handlers/attendance.js";
 import { handleAddUser, handleListUsers, handleReport, handleChart } from "./handlers/admin.js";
 import {
   handleProducts, handleProductAdd, handlePurchase, handleSale, handleDebtPayment,
@@ -57,19 +57,17 @@ export async function routeUpdate(update, env) {
   const chatId = msg.chat.id;
   if (!user || !user.is_active) return sendMessage(env, chatId, "⛔ حساب شما در سیستم ثبت نشده یا غیرفعال است.");
 
-  // اجازه می‌دهد چند دستور حضور و غیاب در یک پیام چندخطی ارسال شوند.
+  // پیام‌های دارای تاریخ صریح، برنامه کامل همان روز را جایگزین می‌کنند.
   const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (lines.length > 1) {
-    const attendanceLines = lines.map((line) => {
-      const match = line.match(/^(\/in|\/out)(?:@\w+)?\s*(.*)$/i);
-      if (!match) return null;
-      return {
-        command: match[1].toLowerCase(),
-        args: match[2].trim().split(/\s+/).filter(Boolean),
-      };
-    });
-
-    if (attendanceLines.every(Boolean)) {
+  const attendanceLines = lines.map((line) => {
+    const match = line.match(/^(\/in|\/out)(?:@\w+)?\s*(.*)$/i);
+    if (!match) return null;
+    return { command: match[1].toLowerCase(), args: match[2].trim().split(/\s+/).filter(Boolean) };
+  });
+  if (attendanceLines.length && attendanceLines.every(Boolean)) {
+    const hasExplicitDate = attendanceLines.some((item) => (item.args.join(" ").match(/\d+/g) || []).length === 5);
+    if (hasExplicitDate) return handleReplaceAttendance({ env, msg, chatId, user, commands: attendanceLines });
+    if (lines.length > 1) {
       for (const item of attendanceLines) {
         const handler = item.command === "/in" ? handleCheckIn : handleCheckOut;
         await handler({ env, msg, args: item.args, user, chatId });
