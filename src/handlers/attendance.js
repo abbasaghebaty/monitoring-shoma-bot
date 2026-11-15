@@ -1,5 +1,5 @@
 import { sendMessage } from "../telegram.js";
-import { getOpenShift, checkIn, checkOut, replaceDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
+import { getOpenShift, getOpenShiftOnDate, checkIn, checkOut, replaceDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
 import { formatTime, formatDuration, formatToman, formatDate, startOfLocalDayIso, startOfLocalMonthIso, localDateKey } from "../utils/time.js";
 
 const HOURLY_RATE_TOMAN = 16000;
@@ -96,9 +96,9 @@ export async function handleReplaceAttendance({ env, chatId, user, commands = []
     const dayEnd = localDateTimeToIso(next, 0, 0, tz);
     await replaceDayAttendance(env, user.telegram_id, dayStart, dayEnd, shifts);
     const totalMinutes = shifts.reduce((sum, shift) => sum + shift.duration_minutes, 0);
-    return sendMessage(env, chatId, `✅ برنامه کاری ${formatDate(shifts[0].check_in, tz)} جایگزین شد.\\n🔁 تعداد شیفت‌ها: ${shifts.length}\\n⏱ مجموع کارکرد: ${formatDuration(totalMinutes)}`);
+    return sendMessage(env, chatId, `✅ برنامه کاری ${formatDate(shifts[0].check_in, tz)} جایگزین شد.\n🔁 تعداد شیفت‌ها: ${shifts.length}\n⏱ مجموع کارکرد: ${formatDuration(totalMinutes)}`);
   } catch (error) {
-    return sendMessage(env, chatId, `⚠️ ${error.message}\\nنمونه: /in 16:00 1405.8.20\\n/out 21:30 1405.8.20`);
+    return sendMessage(env, chatId, `⚠️ ${error.message}\nنمونه: /in 16:00 1405.8.20\n/out 21:30 1405.8.20`);
   }
 }
 
@@ -126,7 +126,7 @@ function parseAttendanceTimestamp(args, tz) {
   return { at, dayKey, hasExplicitDate };
 }
 
-export async function handleCheckIn({ env, chatId, user, args = [] }) {
+export async function handleCheckIn({ env, chatId, user, args = [], msg }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
   const tz = env.TIMEZONE || "Asia/Tehran";
   if (String(msg?.text || "").trim().match(/^\\/in(?:@\\w+)?$/i)) {
@@ -140,7 +140,7 @@ export async function handleCheckIn({ env, chatId, user, args = [] }) {
   }
 
   const savedAt = await checkIn(env, user.telegram_id, parsed.at);
-  return sendMessage(env, chatId, `🔵 ورود ثبت شد\\n🕒 ${formatTime(savedAt, tz)}`);
+  return sendMessage(env, chatId, `🔵 ورود ثبت شد\n🕒 ${formatTime(savedAt, tz)}`);
 }
 
 export async function handleCheckOut({ env, chatId, user, args = [] }) {
