@@ -17,9 +17,8 @@ function jalaliToGregorianKey(jy, jm, jd) {
   const formatter = new Intl.DateTimeFormat("en-US-u-ca-persian-nu-latn", {
     timeZone: "UTC", year: "numeric", month: "numeric", day: "numeric",
   });
-  const start = new Date(Date.UTC(jy + 621, 0, 1, 12));
-  start.setUTCDate(start.getUTCDate() - 90);
-  for (let i = 0; i < 460; i++) {
+  const start = new Date(Date.UTC(jy + 621, 2, 1, 12));
+  for (let i = 0; i < 400; i++) {
     const date = new Date(start);
     date.setUTCDate(start.getUTCDate() + i);
     const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
