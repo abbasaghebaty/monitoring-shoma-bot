@@ -1,5 +1,5 @@
 import { sendMessage } from "../telegram.js";
-import { getOpenShift, getOpenShiftOnDate, checkIn, updateCheckIn, checkOut, replaceDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
+import { getOpenShift, checkIn, checkOut, replaceDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
 import { formatTime, formatDuration, formatToman, formatDate, startOfLocalDayIso, startOfLocalMonthIso, localDateKey } from "../utils/time.js";
 
 const HOURLY_RATE_TOMAN = 16000;
@@ -136,19 +136,8 @@ export async function handleCheckIn({ env, chatId, user, args = [] }) {
     return sendMessage(env, chatId, `⚠️ ${error.message}\nنمونه: /in 14:38 1405/08/24`);
   }
 
-  const [year, month, day] = parsed.dayKey.split("-").map(Number);
-  const next = new Date(Date.UTC(year, month - 1, day + 1, 12)).toISOString().slice(0, 10);
-  const dayStart = localDateTimeToIso(parsed.dayKey, 0, 0, tz);
-  const dayEnd = localDateTimeToIso(next, 0, 0, tz);
-  const sameDayOpenShift = await getOpenShiftOnDate(env, user.telegram_id, dayStart, dayEnd);
-
-  if (sameDayOpenShift) {
-    await updateCheckIn(env, sameDayOpenShift, parsed.at);
-    return sendMessage(env, chatId, `🔵 ساعت ورود همان روز به‌روزرسانی شد\n🕒 ${formatTime(parsed.at, tz)}`);
-  }
-
   const savedAt = await checkIn(env, user.telegram_id, parsed.at);
-  return sendMessage(env, chatId, `🔵 ورود ثبت شد\n🕒 ${formatTime(savedAt, tz)}`);
+  return sendMessage(env, chatId, `🔵 ورود ثبت شد\\n🕒 ${formatTime(savedAt, tz)}`);
 }
 
 export async function handleCheckOut({ env, chatId, user, args = [] }) {
