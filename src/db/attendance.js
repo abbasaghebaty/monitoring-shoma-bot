@@ -4,18 +4,17 @@ export async function getOpenShift(env, telegramId) {
   ).bind(telegramId).first();
 }
 
-export async function checkIn(env, telegramId) {
-  const now = new Date().toISOString();
-  await env.DB.prepare("INSERT INTO attendance (telegram_id, check_in) VALUES (?, ?)").bind(telegramId, now).run();
-  return now;
+export async function checkIn(env, telegramId, at = new Date().toISOString()) {
+  await env.DB.prepare("INSERT INTO attendance (telegram_id, check_in) VALUES (?, ?)").bind(telegramId, at).run();
+  return at;
 }
 
-export async function checkOut(env, shift) {
-  const now = new Date();
-  const minutes = Math.max(0, Math.round((now.getTime() - new Date(shift.check_in).getTime()) / 60000));
-  await env.DB.prepare("UPDATE attendance SET check_out = ?, duration_minutes = ? WHERE id = ? AND check_out IS NULL")
-    .bind(now.toISOString(), minutes, shift.id).run();
-  return { now: now.toISOString(), minutes };
+export async function checkOut(env, shift, at = new Date().toISOString()) {
+  const minutes = Math.max(0, Math.round((new Date(at).getTime() - new Date(shift.check_in).getTime()) / 60000));
+  const result = await env.DB.prepare("UPDATE attendance SET check_out = ?, duration_minutes = ? WHERE id = ? AND check_out IS NULL")
+    .bind(at, minutes, shift.id).run();
+  if (!result.meta?.changes) throw new Error("این شیفت قبلاً بسته شده یا دیگر قابل ویرایش نیست.");
+  return { now: at, minutes };
 }
 
 export async function getAttendanceSince(env, sinceIso) {
