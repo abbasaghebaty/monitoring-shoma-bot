@@ -9,7 +9,7 @@ export async function handleStart({ env, chatId, user }) {
 }
 export async function handleHelp({ env, chatId, user }) {
   if (user?.role === "owner") return sendMessage(env, chatId,
-    "📚 <b>راهنمای مدیریت</b>\\n\\nاز دکمه‌های گزارش امروز، گزارش هفتگی، کاربران و نمودار استفاده کنید.\\nبرای بخش فروش و انبار، دکمه «فروش و انبار» یا دستور /shop را بزنید.",
+    "📚 <b>راهنمای مدیریت</b>\n\nاز دکمه‌های گزارش امروز، گزارش هفتگی، کاربران و نمودار استفاده کنید.\nبرای بخش فروش و انبار، دکمه «فروش و انبار» یا دستور /shop را بزنید.",
     { parse_mode: "HTML" }
   );
 
@@ -42,12 +42,12 @@ export async function handleHelp({ env, chatId, user }) {
     "",
     "🤖 <b>تبدیل برنامه با هوش مصنوعی</b>",
     "متن زیر را باز کن، کپی کن و ساعت‌های خودت را جایگزین کن:"
-  ].join("\\n");
+  ].join("\n");
 
   const prompt = "این برنامه کاری را به دستورهای ربات تلگرام تبدیل کن. برای هر تاریخ، همه شیفت‌ها را در یک پیام چندخطی بنویس؛ هر شیفت ابتدا /in و سپس /out باشد. تاریخ را در تمام دستورها درج کن. خروجی فقط دستورهای آماده کپی باشد، بدون توضیح. برنامه من: [روزها و ساعت‌های کاری را اینجا بنویس]";
 
   return sendMessage(env, chatId,
-    help + "\\n<blockquote expandable><code>" + prompt + "</code></blockquote>",
+    help + "\n<blockquote expandable><code>" + prompt + "</code></blockquote>",
     { parse_mode: "HTML" }
   );
 }
