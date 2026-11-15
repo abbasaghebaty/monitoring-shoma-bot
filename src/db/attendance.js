@@ -4,6 +4,20 @@ export async function getOpenShift(env, telegramId) {
   ).bind(telegramId).first();
 }
 
+export async function getOpenShiftOnDate(env, telegramId, dayStartIso, dayEndIso) {
+  return env.DB.prepare(
+    "SELECT * FROM attendance WHERE telegram_id = ? AND check_out IS NULL AND check_in >= ? AND check_in < ? ORDER BY id DESC LIMIT 1"
+  ).bind(telegramId, dayStartIso, dayEndIso).first();
+}
+
+export async function updateCheckIn(env, shift, at) {
+  const result = await env.DB.prepare(
+    "UPDATE attendance SET check_in = ? WHERE id = ? AND check_out IS NULL"
+  ).bind(at, shift.id).run();
+  if (!result.meta?.changes) throw new Error("این ورود قبلاً بسته شده یا دیگر قابل ویرایش نیست.");
+  return at;
+}
+
 export async function checkIn(env, telegramId, at = new Date().toISOString()) {
   await env.DB.prepare("INSERT INTO attendance (telegram_id, check_in) VALUES (?, ?)").bind(telegramId, at).run();
   return at;
