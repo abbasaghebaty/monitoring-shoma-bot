@@ -139,6 +139,13 @@ export async function handleCheckIn({ env, chatId, user, args = [], msg }) {
     return sendMessage(env, chatId, `⚠️ ${error.message}\nنمونه: /in 14:38 1405/08/24`);
   }
 
+  const openShift = await getOpenShift(env, user.telegram_id);
+  if (openShift) {
+    return sendMessage(env, chatId,
+      `⚠️ هنوز یک شیفت باز دارید (ورود: ${formatTime(openShift.check_in, tz)}). ابتدا خروج آن را ثبت کن.`
+    );
+  }
+
   const savedAt = await checkIn(env, user.telegram_id, parsed.at);
   return sendMessage(env, chatId, `🔵 ورود ثبت شد\n🕒 ${formatTime(savedAt, tz)}`);
 }
