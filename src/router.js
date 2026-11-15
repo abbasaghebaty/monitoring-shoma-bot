@@ -85,7 +85,7 @@ export async function routeUpdate(update, env) {
   }
   if (entry.admin && !isAdmin(env, msg.from.id)) return sendMessage(env, chatId, "⛔ دسترسی این بخش فقط برای مدیران مجاز است.");
   if (entry.owner && user.role !== "owner") return sendMessage(env, chatId, "⛔ این دستور فقط برای مدیر کل فعال است.");
-  if (!entry.public && user.role === "owner" && !entry.owner && !entry.admin && !["/help", "راهنما"].includes(cmd)) {
+  if (!entry.public && user.role === "owner" && !entry.owner && !entry.admin && !["/help", "راهنما"].includes(cmd) && cmd !== "/shop" && !["فروش و انبار", "🧾 فروش و انبار", "📦 فروش و انبار"].includes(fullText)) {
     return sendMessage(env, chatId, "این قابلیت برای حساب‌های کارمندی است.");
   }
   return entry.run(ctx);
