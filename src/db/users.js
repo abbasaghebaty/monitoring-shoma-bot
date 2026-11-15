@@ -29,12 +29,20 @@ export async function upsertUser(env, { telegramId, fullName, username = null, r
   ).bind(telegramId, fullName, username, role).run();
 }
 
-// ثبت اولیه حساب‌های شناخته‌شده؛ مادر تنها owner است.
+// ثبت اولیه حساب‌های شناخته‌شده؛ نقش و وضعیت حساب‌های موجود را بازنویسی نکن.
 export async function ensureKnownUsers(env, from) {
   for (const person of KNOWN_USERS) {
-    await upsertUser(env, {
-      ...person,
-      username: Number(person.telegramId) === Number(from.id) ? (from.username ?? null) : null,
-    });
+    await env.DB.prepare(
+      `INSERT INTO users (telegram_id, full_name, username, role, is_active)
+       VALUES (?, ?, ?, ?, 1)
+       ON CONFLICT(telegram_id) DO UPDATE SET
+         full_name = excluded.full_name,
+         username = COALESCE(excluded.username, users.username)`
+    ).bind(
+      person.telegramId,
+      person.fullName,
+      Number(person.telegramId) === Number(from.id) ? (from.username ?? null) : null,
+      person.role
+    ).run();
   }
 }
