@@ -129,6 +129,9 @@ function parseAttendanceTimestamp(args, tz) {
 export async function handleCheckIn({ env, chatId, user, args = [] }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
   const tz = env.TIMEZONE || "Asia/Tehran";
+  if (String(msg?.text || "").trim().match(/^\\/in(?:@\\w+)?$/i)) {
+    return sendMessage(env, chatId, "⚠️ برای ثبت دستی ورود، ساعت را هم وارد کن. نمونه: /in 13:00");
+  }
   let parsed;
   try {
     parsed = args.length ? parseAttendanceTimestamp(args, tz) : { at: new Date().toISOString(), dayKey: localDateKey(new Date().toISOString(), tz), hasExplicitDate: false };
