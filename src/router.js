@@ -54,6 +54,7 @@ export async function routeUpdate(update, env) {
   await ensureKnownUsers(env, msg.from);
   const rawText = msg.text.trim();
   const fullText = rawText.toLowerCase();
+  // جداکردن فرمان از آرگومان‌ها؛ تفسیر و نرمال‌سازی داده در handler انجام می‌شود.
   const [rawHead, ...args] = rawText.split(/\s+/);
   const cmd = rawHead.toLowerCase().split("@")[0];
   const user = await getUser(env, msg.from.id);
