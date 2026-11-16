@@ -47,6 +47,7 @@ export async function todayMinutes(env, telegramId, sinceIso) {
   return workedMinutesSince(env, telegramId, sinceIso);
 }
 
+// محاسبه زمان یکتای کار از اجتماع بازه‌ها؛ مبنای گزارش روزانه، ماهانه و درآمد.
 export async function workedMinutesSince(env, telegramId, sinceIso) {
   const { results } = await env.DB.prepare(
     "SELECT id, check_in, check_out, duration_minutes FROM attendance WHERE telegram_id = ? AND check_in < ? AND (check_out >= ? OR check_out IS NULL)"
