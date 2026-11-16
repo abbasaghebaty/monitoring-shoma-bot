@@ -17,9 +17,11 @@ export async function handleListUsers({ env, chatId, user }) {
 
 export async function handleAddUser({ env, chatId, args, user }) {
   if (!ownerOnly(user)) return sendMessage(env, chatId, "⛔ فقط مدیر کل اجازه افزودن کاربر دارد.");
-  const [id, ...nameParts] = args;
+  const [idRaw, ...nameParts] = args;
+  const id = String(idRaw || "").replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
   const fullName = nameParts.join(" ").trim();
-  if (!/^\d+$/.test(id || "") || !fullName) {
+  if (!/^\d+$/.test(id) || !fullName) {
     return sendMessage(env, chatId, "فرمت صحیح:\n/adduser <آیدی عددی> <نام>");
   }
   await upsertUser(env, { telegramId: Number(id), fullName, role: "employee" });
