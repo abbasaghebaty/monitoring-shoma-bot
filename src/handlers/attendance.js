@@ -117,9 +117,34 @@ export async function handleInfo({ env, chatId, user, args = [] }) {
     const bounds = getDayBounds(dayKey, tz);
     const shifts = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
     if (!shifts.length) return sendMessage(env, chatId, "برای " + formatDate(bounds.dayStart, tz) + " هیچ شیفتی ثبت نشده است.");
-    const lines = shifts.map((s, i) => (i + 1) + ". " + formatTime(s.check_in, tz) + " تا " + (s.check_out ? formatTime(s.check_out, tz) : "🔴 هنوز باز") + " — " + (s.duration_minutes != null ? formatDuration(s.duration_minutes) : "در حال محاسبه"));
+    const dateParts = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+      timeZone: tz, weekday: "long", day: "numeric", month: "long", year: "numeric",
+    }).formatToParts(new Date(bounds.dayStart));
+    const dateValues = Object.fromEntries(dateParts.map((part) => [part.type, part.value]));
+    const prettyDate = dateValues.weekday + "، " + dateValues.day + " " + dateValues.month + " " + dateValues.year;
+    const clock = (iso) => new Intl.DateTimeFormat("fa-IR", {
+      timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).format(new Date(iso));
+    const sections = shifts.map((s, i) => [
+      "🔹 شیفت " + (i + 1) + (s.check_out ? "  •  بسته‌شده" : "  •  🔴 باز"),
+      "🟢 ورود: " + clock(s.check_in),
+      "🔴 خروج: " + (s.check_out ? clock(s.check_out) : "ثبت نشده"),
+      "⏱ مدت: " + (s.duration_minutes != null ? formatDuration(s.duration_minutes) : "در حال محاسبه"),
+    ].join("\n"));
     const total = shifts.reduce((sum, s) => sum + Number(s.duration_minutes || 0), 0);
-    return sendMessage(env, chatId, "📋 شیفت‌های " + formatDate(bounds.dayStart, tz) + "\n\n" + lines.join("\n") + "\n\nتعداد شیفت: " + shifts.length + "\n⏱ مجموع شیفت‌های بسته: " + formatDuration(total));
+    const closedCount = shifts.filter((s) => s.check_out).length;
+    const message = [
+      "📋 گزارش شیفت‌های روزانه",
+      "📅 " + prettyDate,
+      "━━━━━━━━━━━━━━",
+      sections.join("\n\n"),
+      "━━━━━━━━━━━━━━",
+      "📊 خلاصه گزارش",
+      "• تعداد کل شیفت‌ها: " + shifts.length,
+      "• شیفت‌های بسته: " + closedCount,
+      "⏱ مجموع زمان شیفت‌های بسته: " + formatDuration(total),
+    ].join("\n");
+    return sendMessage(env, chatId, message);
   } catch (error) { return sendMessage(env, chatId, "⚠️ " + error.message); }
 }
 
