@@ -20,10 +20,16 @@ function splitFields(raw) {
   return raw.split("|").map((part) => part.trim());
 }
 
+function normalizeDigits(value) {
+  return String(value ?? "").replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
+}
+
 function integer(value, label, { min = 0 } = {}) {
-  if (!/^\d+$/.test(String(value ?? ""))) throw new Error(`${label} باید عدد صحیح باشد.`);
-  const n = Number(value);
-  if (!Number.isSafeInteger(n) || n < min) throw new Error(`${label} نامعتبر است.`);
+  const normalized = normalizeDigits(value);
+  if (!/^\d+$/.test(normalized)) throw new Error(\`${label} باید عدد صحیح باشد.\`);
+  const n = Number(normalized);
+  if (!Number.isSafeInteger(n) || n < min) throw new Error(\`${label} نامعتبر است.\`);
   return n;
 }
 
@@ -105,7 +111,7 @@ export async function handlePurchase({ env, chatId, args }) {
     if (!dateInput || !itemsRaw) throw new Error("قالب: /purchase تاریخ | تأمین‌کننده یا - | شناسه:تعداد:خرید:فروش:مصرف;... | توضیح");
     const dateRaw = normalizeDigits(dateInput).replace(/[/.]/g, "-");
     const parsedDate = new Date(dateRaw + "T00:00:00Z");
-    if (!/^\\d{4}-\\d{1,2}-\\d{1,2}$/.test(dateRaw) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateRaw) {
+    if (!/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateRaw) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateRaw) {
       throw new Error("تاریخ خرید باید معتبر باشد؛ نمونه: 2026-11-15 یا 2026.11.15.");
     }
     const normalizedDate = parsedDate.toISOString().slice(0, 10);
