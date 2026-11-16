@@ -2,6 +2,7 @@ import { sendMessage } from "../telegram.js";
 import { listUsers, upsertUser } from "../db/users.js";
 import { getAttendanceSince } from "../db/attendance.js";
 import { formatDuration, daysAgoKey, localDateKey, startOfLocalDayIso } from "../utils/time.js";
+import { mergeAttendanceIntervals } from "../utils/attendance.js";
 
 function ownerOnly(user) {
   return user?.role === "owner";
@@ -29,18 +30,22 @@ async function buildReport(env, days) {
   const tz = env.TIMEZONE || "Asia/Tehran";
   const startKey = days === 1 ? localDateKey(new Date().toISOString(), tz) : daysAgoKey(days - 1, tz);
   const rows = await getAttendanceSince(env, startOfLocalDayIso(startKey, tz));
-  const totals = new Map();
+  const byEmployee = new Map();
   for (const row of rows) {
-    const current = totals.get(row.telegram_id) || { name: row.full_name, minutes: 0, shifts: 0, open: false };
-    if (row.duration_minutes != null) {
-      current.minutes += Number(row.duration_minutes);
-      current.shifts += 1;
-    } else {
-      current.open = true;
-    }
-    totals.set(row.telegram_id, current);
+    if (!byEmployee.has(row.telegram_id)) byEmployee.set(row.telegram_id, { name: row.full_name, rows: [] });
+    byEmployee.get(row.telegram_id).rows.push(row);
   }
-  return [...totals.values()].sort((a, b) => b.minutes - a.minutes);
+  const from = new Date(startOfLocalDayIso(startKey, tz)).getTime();
+  const to = Date.now();
+  return [...byEmployee.values()].map((employee) => {
+    const intervals = mergeAttendanceIntervals(employee.rows, { from, to });
+    return {
+      name: employee.name,
+      minutes: intervals.reduce((sum, item) => sum + item.duration_minutes, 0),
+      shifts: intervals.length,
+      open: intervals.some((item) => item.open),
+    };
+  }).sort((a, b) => b.minutes - a.minutes);
 }
 
 export async function handleReport({ env, chatId, user, days = 1 }) {
