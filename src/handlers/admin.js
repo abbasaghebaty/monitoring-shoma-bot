@@ -28,6 +28,7 @@ export async function handleAddUser({ env, chatId, args, user }) {
   return sendMessage(env, chatId, `✅ ${fullName} به‌عنوان کارمند اضافه شد.`);
 }
 
+// گزارش مدیر بر اساس اجتماع بازه‌ها ساخته می‌شود تا زمان‌های هم‌پوشان دوباره‌شماری نشوند.
 async function buildReport(env, days) {
   const tz = env.TIMEZONE || "Asia/Tehran";
   const startKey = days === 1 ? localDateKey(new Date().toISOString(), tz) : daysAgoKey(days - 1, tz);
