@@ -101,12 +101,14 @@ export async function handleProductAdd({ env, chatId, args }) {
 
 export async function handlePurchase({ env, chatId, args }) {
   try {
-    const [dateRaw, supplier, itemsRaw, note = ""] = splitFields(args.join(" "));
-    if (!dateRaw || !itemsRaw) throw new Error("قالب: /purchase تاریخ-میلادی-YYYY-MM-DD | تأمین‌کننده یا - | شناسه:تعداد:خرید:فروش:مصرف;... | توضیح");
+    const [dateInput, supplier, itemsRaw, note = ""] = splitFields(args.join(" "));
+    if (!dateInput || !itemsRaw) throw new Error("قالب: /purchase تاریخ | تأمین‌کننده یا - | شناسه:تعداد:خرید:فروش:مصرف;... | توضیح");
+    const dateRaw = normalizeDigits(dateInput).replace(/[/.]/g, "-");
     const parsedDate = new Date(dateRaw + "T00:00:00Z");
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(dateRaw) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateRaw) {
-      throw new Error("تاریخ خرید باید معتبر و با قالب YYYY-MM-DD باشد.");
+    if (!/^\\d{4}-\\d{1,2}-\\d{1,2}$/.test(dateRaw) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateRaw) {
+      throw new Error("تاریخ خرید باید معتبر باشد؛ نمونه: 2026-11-15 یا 2026.11.15.");
     }
+    const normalizedDate = parsedDate.toISOString().slice(0, 10);
     const items = parseItems(itemsRaw, true);
     const products = await Promise.all(items.map((x) => getProduct(env, x.productId)));
     for (let i = 0; i < items.length; i++) {
@@ -118,7 +120,7 @@ export async function handlePurchase({ env, chatId, args }) {
     const statements = [
       env.DB.prepare(
         "INSERT INTO purchases (id, supplier, purchase_date, total_amount, note) VALUES (?, ?, ?, ?, ?)"
-      ).bind(purchaseId, supplier === "-" ? null : (supplier || null), dateRaw, total, note || null),
+      ).bind(purchaseId, supplier === "-" ? null : (supplier || null), normalizedDate, total, note || null),
       ...items.map((x) => env.DB.prepare(
         `INSERT INTO purchase_items (purchase_id, product_id, qty, purchase_price, sell_price, consumer_price)
          VALUES (?, ?, ?, ?, ?, ?)`
@@ -126,7 +128,7 @@ export async function handlePurchase({ env, chatId, args }) {
     ];
     await env.DB.batch(statements);
     return sendMessage(env, chatId,
-      `✅ خرید ثبت شد\nشماره خرید: #${purchaseId}\nتاریخ: ${dateRaw}\nتأمین‌کننده: ${supplier && supplier !== "-" ? supplier : "ثبت نشده"}\nتعداد اقلام: ${items.length}\n💰 جمع خرید: ${formatToman(total)}\nموجودی محصولات طبق تریگر افزایش یافت.`
+      `✅ خرید ثبت شد\nشماره خرید: #${purchaseId}\nتاریخ: ${normalizedDate}\nتأمین‌کننده: ${supplier && supplier !== "-" ? supplier : "ثبت نشده"}\nتعداد اقلام: ${items.length}\n💰 جمع خرید: ${formatToman(total)}\nموجودی محصولات طبق تریگر افزایش یافت.`
     );
   } catch (error) {
     return replyError(env, chatId, error);
