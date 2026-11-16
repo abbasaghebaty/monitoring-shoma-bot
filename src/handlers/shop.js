@@ -27,9 +27,9 @@ function normalizeDigits(value) {
 
 function integer(value, label, { min = 0 } = {}) {
   const normalized = normalizeDigits(value);
-  if (!/^\d+$/.test(normalized)) throw new Error(\`${label} باید عدد صحیح باشد.\`);
+  if (!/^\d+$/.test(normalized)) throw new Error(label + " باید عدد صحیح باشد.");
   const n = Number(normalized);
-  if (!Number.isSafeInteger(n) || n < min) throw new Error(\`${label} نامعتبر است.\`);
+  if (!Number.isSafeInteger(n) || n < min) throw new Error(label + " نامعتبر است.");
   return n;
 }
 
@@ -109,12 +109,17 @@ export async function handlePurchase({ env, chatId, args }) {
   try {
     const [dateInput, supplier, itemsRaw, note = ""] = splitFields(args.join(" "));
     if (!dateInput || !itemsRaw) throw new Error("قالب: /purchase تاریخ | تأمین‌کننده یا - | شناسه:تعداد:خرید:فروش:مصرف;... | توضیح");
-    const dateRaw = normalizeDigits(dateInput).replace(/[/.]/g, "-");
-    const parsedDate = new Date(dateRaw + "T00:00:00Z");
-    if (!/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateRaw) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateRaw) {
+    const dateParts = normalizeDigits(dateInput).split(/[./-]/);
+    if (dateParts.length !== 3 || dateParts.some((part) => !/^\d{1,4}$/.test(part))) {
+      throw new Error("تاریخ خرید باید میلادی باشد؛ نمونه: 2026-11-15 یا 2026.11.15.");
+    }
+    const [year, month, day] = dateParts.map(Number);
+    const normalizedDate = [String(year).padStart(4, "0"), String(month).padStart(2, "0"), String(day).padStart(2, "0")].join("-");
+    const parsedDate = new Date(normalizedDate + "T00:00:00Z");
+    if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31 ||
+        Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== normalizedDate) {
       throw new Error("تاریخ خرید باید معتبر باشد؛ نمونه: 2026-11-15 یا 2026.11.15.");
     }
-    const normalizedDate = parsedDate.toISOString().slice(0, 10);
     const items = parseItems(itemsRaw, true);
     const products = await Promise.all(items.map((x) => getProduct(env, x.productId)));
     for (let i = 0; i < items.length; i++) {
