@@ -16,6 +16,7 @@ function makeId() {
   return value;
 }
 
+// فرمان‌های فروشگاه از فیلدهای جداشده با | استفاده می‌کنند؛ نرمال‌سازی ارقام در اعتبارسنجی عددی انجام می‌شود.
 function splitFields(raw) {
   return raw.split("|").map((part) => part.trim());
 }
@@ -105,6 +106,7 @@ export async function handleProductAdd({ env, chatId, args }) {
   }
 }
 
+// ثبت خرید و اقلام آن در یک batch؛ افزایش موجودی به triggerهای D1 واگذار شده است.
 export async function handlePurchase({ env, chatId, args }) {
   try {
     const [dateInput, supplier, itemsRaw, note = ""] = splitFields(args.join(" "));
@@ -146,6 +148,7 @@ export async function handlePurchase({ env, chatId, args }) {
   }
 }
 
+// اعتبارسنجی موجودی، پرداخت و مشتری پیش از ثبت فاکتور و اقلام فروش.
 export async function handleSale({ env, chatId, args }) {
   try {
     const [customerRaw, paymentRaw, itemsRaw, note = ""] = splitFields(args.join(" "));
@@ -206,6 +209,7 @@ export async function handleSale({ env, chatId, args }) {
   }
 }
 
+// ثبت پرداخت بدهی؛ مانده و وضعیت نهایی توسط triggerهای دیتابیس به‌روزرسانی می‌شوند.
 export async function handleDebtPayment({ env, chatId, args }) {
   try {
     const [debtRaw, methodRaw, amountRaw, note = ""] = splitFields(args.join(" "));
