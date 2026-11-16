@@ -77,6 +77,7 @@ function getDayBounds(dayKey, tz) {
   return { dayStart: localDateTimeToIso(dayKey, 0, 0, tz), dayEnd: localDateTimeToIso(next, 0, 0, tz) };
 }
 
+// ثبت دسته‌ای ورود/خروج تاریخی؛ داده خام حفظ می‌شود و فقط در گزارش ادغام می‌شود.
 export async function handleAppendAttendance({ env, chatId, user, commands = [] }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
   const tz = env.TIMEZONE || "Asia/Tehran";
@@ -107,6 +108,7 @@ export async function handleAppendAttendance({ env, chatId, user, commands = [] 
   }
 }
 
+// گزارش روزانه بر اساس بازه‌های ادغام‌شده؛ شماره‌ها در فرمان حذف نیز به همین گروه‌ها اشاره می‌کنند.
 export async function handleInfo({ env, chatId, user, args = [] }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
   try {
@@ -149,6 +151,7 @@ export async function handleInfo({ env, chatId, user, args = [] }) {
   } catch (error) { return sendMessage(env, chatId, "⚠️ " + error.message); }
 }
 
+// حذف یک بازه ادغام‌شده باید تمام رکوردهای خام سازنده آن بازه را حذف کند.
 export async function handleDeleteAttendance({ env, chatId, user, args = [] }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
   try {
@@ -193,7 +196,6 @@ export async function handleAttendanceCallback({ env, callback, user }) {
 }
 
 // تاریخ و ساعت جداگانه شناسایی می‌شوند؛ ترتیب نوشتن آن‌ها و نوع ارقام اهمیتی ندارد.
-// تاریخ و ساعت جداگانه شناسایی می‌شوند؛ ترتیب نوشتن آن‌ها و نوع ارقام اهمیتی ندارد.
 function parseAttendanceTimestamp(args, tz) {
   const parts = (args || []).map(normalizeDigits);
   const dateIndex = parts.findIndex((value) => /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/.test(value));
@@ -219,6 +221,7 @@ function parseAttendanceTimestamp(args, tz) {
   return { at, dayKey, hasExplicitDate };
 }
 
+// ثبت ورود جاری یا دستی؛ وجود شیفت باز قبلی همچنان مانع ورود جدید است.
 export async function handleCheckIn({ env, chatId, user, args = [], msg }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
   const tz = env.TIMEZONE || "Asia/Tehran";
@@ -243,6 +246,7 @@ export async function handleCheckIn({ env, chatId, user, args = [], msg }) {
   return sendMessage(env, chatId, `🔵 ورود ثبت شد\n🕒 ${formatTime(savedAt, tz)}`);
 }
 
+// خروج فقط شیفت باز همان تاریخ را می‌بندد و مدت را از timestampها محاسبه می‌کند.
 export async function handleCheckOut({ env, chatId, user, args = [] }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
   const tz = env.TIMEZONE || "Asia/Tehran";
