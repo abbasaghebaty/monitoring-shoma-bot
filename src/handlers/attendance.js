@@ -97,11 +97,11 @@ export async function handleAppendAttendance({ env, chatId, user, commands = [] 
     }
     const bounds = getDayBounds(dayKey, tz);
     const existing = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
-    const all = [...existing, ...shifts].sort((x, y) => new Date(x.check_in) - new Date(y.check_in));
-    // هم‌پوشانی در زمان نمایش و محاسبه ادغام می‌شود؛ رکورد خام برای حفظ سابقه حذف یا بازنویسی نمی‌شود.
+    // ادغام با سوابق قبلی برای نمایش زمان یکتا؛ رکوردهای اصلی فقط افزوده می‌شوند و حذف نمی‌شوند.
+    const mergedDay = mergeAttendanceIntervals([...existing, ...shifts]);
     await appendDayAttendance(env, user.telegram_id, shifts);
-    const total = shifts.reduce((sum, x) => sum + x.duration_minutes, 0);
-    return sendMessage(env, chatId, "✅ " + shifts.length + " شیفت جدید به " + formatDate(shifts[0].check_in, tz) + " اضافه شد.\nشیفت‌های قبلی تغییری نکردند.\n⏱ مجموع زمان شیفت‌های جدید: " + formatDuration(total));
+    const total = mergedDay.filter((item) => !item.open).reduce((sum, item) => sum + item.duration_minutes, 0);
+    return sendMessage(env, chatId, "✅ " + shifts.length + " رکورد شیفت جدید ثبت شد.\nسوابق قبلی حفظ شدند و بازه‌های هم‌پوشان ادغام می‌شوند.\n⏱ مجموع زمان یکتای بازه‌های بسته روز: " + formatDuration(total));
   } catch (error) {
     return sendMessage(env, chatId, "⚠️ " + error.message + "\nنمونه:\n/in 09:00 1405/08/24\n/out 12:00 1405/08/24");
   }
