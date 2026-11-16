@@ -131,7 +131,7 @@ export async function handleInfo({ env, chatId, user, args = [] }) {
       "🔴 خروج: " + (s.check_out ? clock(s.check_out) : "ثبت نشده"),
       "⏱ مدت: " + (s.open ? "در حال محاسبه" : formatDuration(s.duration_minutes)),
     ].join("\n"));
-    const closedGroups = shifts.filter((s) => !s.open);
+    const closedGroups = mergeAttendanceIntervals(rawShifts.filter((s) => s.check_out));
     const total = closedGroups.reduce((sum, s) => sum + s.duration_minutes, 0);
     const closedCount = closedGroups.length;
     const message = [
@@ -155,7 +155,7 @@ export async function handleDeleteAttendance({ env, chatId, user, args = [] }) {
     if (!args.length) throw new Error("نمونه: /delete 1405/08/24 2 یا /delete 2 1405.8.24");
     const tz = env.TIMEZONE || "Asia/Tehran";
     // تاریخ را از هر جای آرگومان‌ها پیدا می‌کنیم؛ ترتیب تاریخ و شماره بازه مهم نیست.
-    const dateIndex = args.findIndex((value) => /^(?:\\d{4})[./-]\\d{1,2}[./-]\\d{1,2}$/.test(normalizeDigits(value)));
+    const dateIndex = args.findIndex((value) => /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/.test(normalizeDigits(value)));
     if (dateIndex < 0) throw new Error("تاریخ را در دستور وارد کن؛ نمونه: /delete 2 1405.8.24");
     const dateRaw = args[dateIndex];
     const dayKey = parseDateKey(dateRaw);
@@ -192,6 +192,7 @@ export async function handleAttendanceCallback({ env, callback, user }) {
   return sendMessage(env, callback.message?.chat?.id, "✅ تمام " + shifts.length + " شیفت روز " + formatDate(bounds.dayStart, tz) + " حذف شدند.");
 }
 
+// تاریخ و ساعت جداگانه شناسایی می‌شوند؛ ترتیب نوشتن آن‌ها و نوع ارقام اهمیتی ندارد.
 // تاریخ و ساعت جداگانه شناسایی می‌شوند؛ ترتیب نوشتن آن‌ها و نوع ارقام اهمیتی ندارد.
 function parseAttendanceTimestamp(args, tz) {
   const parts = (args || []).map(normalizeDigits);
