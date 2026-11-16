@@ -11,8 +11,14 @@ export function formatDate(iso = new Date().toISOString(), tz = "Asia/Tehran") {
 }
 
 export function formatDuration(minutes) {
-  const total = Math.max(0, Number(minutes) || 0);
-  return `${(total / 60).toFixed(1).replace(".", "/")} ساعت`;
+  const total = Math.max(0, Math.round(Number(minutes) || 0));
+  const hours = Math.floor(total / 60);
+  const remainingMinutes = total % 60;
+  if (hours && remainingMinutes) {
+    return `${hours.toLocaleString("fa-IR")} ساعت و ${remainingMinutes.toLocaleString("fa-IR")} دقیقه`;
+  }
+  if (hours) return `${hours.toLocaleString("fa-IR")} ساعت`;
+  return `${remainingMinutes.toLocaleString("fa-IR")} دقیقه`;
 }
 
 export function formatToman(amount) {
