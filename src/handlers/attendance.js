@@ -1,9 +1,11 @@
 import { sendMessage, answerCallback } from "../telegram.js";
 import { getOpenShift, getOpenShiftOnDate, getShiftsOnDate, checkIn, checkOut, appendDayAttendance, deleteShiftsByIds, deleteDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
 import { formatTime, formatDuration, formatToman, formatDate, startOfLocalDayIso, startOfLocalMonthIso, localDateKey } from "../utils/time.js";
+import { mergeAttendanceIntervals } from "../utils/attendance.js";
 
 export const HOURLY_RATE_TOMAN = 16000;
 
+// ورودی‌های متنی تلگرام را مستقل از شکل ارقام و جداکننده‌ها به داده استاندارد تبدیل می‌کنیم.
 function employeeOnly(user) {
   return user?.role === "employee";
 }
@@ -96,10 +98,7 @@ export async function handleAppendAttendance({ env, chatId, user, commands = [] 
     const bounds = getDayBounds(dayKey, tz);
     const existing = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
     const all = [...existing, ...shifts].sort((x, y) => new Date(x.check_in) - new Date(y.check_in));
-    for (let i = 1; i < all.length; i++) {
-      const previousEnd = all[i - 1].check_out ? new Date(all[i - 1].check_out).getTime() : Date.now();
-      if (new Date(all[i].check_in).getTime() < previousEnd) throw new Error("زمان شیفت جدید با یکی از شیفت‌های ثبت‌شده هم‌پوشانی دارد؛ ابتدا با /info شیفت‌های آن روز را بررسی کن.");
-    }
+    // هم‌پوشانی در زمان نمایش و محاسبه ادغام می‌شود؛ رکورد خام برای حفظ سابقه حذف یا بازنویسی نمی‌شود.
     await appendDayAttendance(env, user.telegram_id, shifts);
     const total = shifts.reduce((sum, x) => sum + x.duration_minutes, 0);
     return sendMessage(env, chatId, "✅ " + shifts.length + " شیفت جدید به " + formatDate(shifts[0].check_in, tz) + " اضافه شد.\nشیفت‌های قبلی تغییری نکردند.\n⏱ مجموع زمان شیفت‌های جدید: " + formatDuration(total));
@@ -115,7 +114,8 @@ export async function handleInfo({ env, chatId, user, args = [] }) {
     const tz = env.TIMEZONE || "Asia/Tehran";
     const dayKey = parseDateKey(args[0]);
     const bounds = getDayBounds(dayKey, tz);
-    const shifts = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
+    const rawShifts = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
+    const shifts = mergeAttendanceIntervals(rawShifts);
     if (!shifts.length) return sendMessage(env, chatId, "برای " + formatDate(bounds.dayStart, tz) + " هیچ شیفتی ثبت نشده است.");
     const dateParts = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
       timeZone: tz, weekday: "long", day: "numeric", month: "long", year: "numeric",
@@ -129,10 +129,11 @@ export async function handleInfo({ env, chatId, user, args = [] }) {
       "🔹 شیفت " + (i + 1) + (s.check_out ? "  •  بسته‌شده" : "  •  🔴 باز"),
       "🟢 ورود: " + clock(s.check_in),
       "🔴 خروج: " + (s.check_out ? clock(s.check_out) : "ثبت نشده"),
-      "⏱ مدت: " + (s.duration_minutes != null ? formatDuration(s.duration_minutes) : "در حال محاسبه"),
+      "⏱ مدت: " + (s.open ? "در حال محاسبه" : formatDuration(s.duration_minutes)),
     ].join("\n"));
-    const total = shifts.reduce((sum, s) => sum + Number(s.duration_minutes || 0), 0);
-    const closedCount = shifts.filter((s) => s.check_out).length;
+    const closedGroups = shifts.filter((s) => !s.open);
+    const total = closedGroups.reduce((sum, s) => sum + s.duration_minutes, 0);
+    const closedCount = closedGroups.length;
     const message = [
       "📋 گزارش شیفت‌های روزانه",
       "📅 " + prettyDate,
@@ -140,7 +141,7 @@ export async function handleInfo({ env, chatId, user, args = [] }) {
       sections.join("\n\n"),
       "━━━━━━━━━━━━━━",
       "📊 خلاصه گزارش",
-      "• تعداد کل شیفت‌ها: " + shifts.length,
+      "• تعداد کل بازه‌های ادغام‌شده: " + shifts.length,
       "• شیفت‌های بسته: " + closedCount,
       "⏱ مجموع زمان شیفت‌های بسته: " + formatDuration(total),
     ].join("\n");
@@ -151,22 +152,28 @@ export async function handleInfo({ env, chatId, user, args = [] }) {
 export async function handleDeleteAttendance({ env, chatId, user, args = [] }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
   try {
-    if (!args.length) throw new Error("نمونه: /delete 1405/08/24 یا /delete 1405/08/24 1 3");
+    if (!args.length) throw new Error("نمونه: /delete 1405/08/24 2 یا /delete 2 1405.8.24");
     const tz = env.TIMEZONE || "Asia/Tehran";
-    const dayKey = parseDateKey(args[0]);
+    // تاریخ را از هر جای آرگومان‌ها پیدا می‌کنیم؛ ترتیب تاریخ و شماره بازه مهم نیست.
+    const dateIndex = args.findIndex((value) => /^(?:\\d{4})[./-]\\d{1,2}[./-]\\d{1,2}$/.test(normalizeDigits(value)));
+    if (dateIndex < 0) throw new Error("تاریخ را در دستور وارد کن؛ نمونه: /delete 2 1405.8.24");
+    const dateRaw = args[dateIndex];
+    const dayKey = parseDateKey(dateRaw);
+    const indexes = args.filter((_, index) => index !== dateIndex).map((value) => Number(normalizeDigits(value)));
     const bounds = getDayBounds(dayKey, tz);
-    const shifts = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
+    const rawShifts = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
+    const shifts = mergeAttendanceIntervals(rawShifts);
     if (!shifts.length) return sendMessage(env, chatId, "برای این تاریخ شیفتی پیدا نشد.");
-    if (args.length === 1) {
-      return sendMessage(env, chatId, "⚠️ تأیید حذف تمام " + shifts.length + " شیفت روز " + formatDate(bounds.dayStart, tz) + "\nاین کار قابل بازگشت نیست. مطمئنی؟", {
+    if (!indexes.length) {
+      return sendMessage(env, chatId, "⚠️ تأیید حذف تمام " + rawShifts.length + " رکورد در " + shifts.length + " بازه روز " + formatDate(bounds.dayStart, tz) + "\nاین کار قابل بازگشت نیست. مطمئنی؟", {
         reply_markup: { inline_keyboard: [[{ text: "🗑 بله، حذف همه شیفت‌ها", callback_data: "attdel:" + dayKey }], [{ text: "انصراف", callback_data: "attcancel" }]] }
       });
     }
-    const indexes = args.slice(1).map(x => Number(normalizeDigits(x)));
-    if (indexes.some(n => !Number.isInteger(n) || n < 1 || n > shifts.length)) throw new Error("شماره شیفت باید بین ۱ تا " + shifts.length + " باشد. برای دیدن شماره‌ها /info " + args[0] + " را بزن.");
+    if (indexes.some(n => !Number.isInteger(n) || n < 1 || n > shifts.length)) throw new Error("شماره بازه باید بین ۱ تا " + shifts.length + " باشد. برای دیدن شماره‌ها /info " + dateRaw + " را بزن.");
     const unique = [...new Set(indexes)];
-    await deleteShiftsByIds(env, user.telegram_id, unique.map(n => shifts[n - 1].id));
-    return sendMessage(env, chatId, "✅ شیفت‌های " + unique.sort((x, y) => x - y).join("، ") + " از " + formatDate(bounds.dayStart, tz) + " حذف شدند.");
+    const ids = unique.flatMap((n) => shifts[n - 1].ids);
+    await deleteShiftsByIds(env, user.telegram_id, ids);
+    return sendMessage(env, chatId, "✅ بازه‌های " + unique.sort((x, y) => x - y).join("، ") + " از " + formatDate(bounds.dayStart, tz) + " حذف شدند.");
   } catch (error) { return sendMessage(env, chatId, "⚠️ " + error.message); }
 }
 
