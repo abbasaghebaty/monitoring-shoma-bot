@@ -66,7 +66,9 @@ export async function routeUpdate(update, env) {
   });
   if (attendanceLines.length && attendanceLines.every(Boolean)) {
     const hasExplicitDate = attendanceLines.some((item) => (item.args.join(" ").match(/\d+/g) || []).length === 5);
-    if (hasExplicitDate) return handleReplaceAttendance({ env, msg, chatId, user, commands: attendanceLines });
+    // یک دستور تکی، حتی با تاریخ صریح، باید مستقل اجرا شود؛
+    // جایگزینی برنامه روزانه فقط برای چند دستور در یک پیام است.
+    if (lines.length > 1 && hasExplicitDate) return handleReplaceAttendance({ env, msg, chatId, user, commands: attendanceLines });
     if (lines.length > 1) {
       for (const item of attendanceLines) {
         const handler = item.command === "/in" ? handleCheckIn : handleCheckOut;
