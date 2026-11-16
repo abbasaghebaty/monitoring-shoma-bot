@@ -72,3 +72,31 @@ export async function workedMinutesSince(env, telegramId, sinceIso) {
     return sum;
   }, 0);
 }
+
+
+export async function getShiftsOnDate(env, telegramId, dayStartIso, dayEndIso) {
+  const { results } = await env.DB.prepare(
+    "SELECT id, check_in, check_out, duration_minutes FROM attendance WHERE telegram_id = ? AND check_in >= ? AND check_in < ? ORDER BY check_in ASC, id ASC"
+  ).bind(telegramId, dayStartIso, dayEndIso).all();
+  return results || [];
+}
+
+export async function appendDayAttendance(env, telegramId, shifts) {
+  if (!shifts.length) return;
+  await env.DB.batch(shifts.map((shift) => env.DB.prepare(
+    "INSERT INTO attendance (telegram_id, check_in, check_out, duration_minutes) VALUES (?, ?, ?, ?)"
+  ).bind(telegramId, shift.check_in, shift.check_out, shift.duration_minutes)));
+}
+
+export async function deleteShiftsByIds(env, telegramId, ids) {
+  if (!ids.length) return;
+  const placeholders = ids.map(() => "?").join(",");
+  await env.DB.prepare("DELETE FROM attendance WHERE telegram_id = ? AND id IN (" + placeholders + ")")
+    .bind(telegramId, ...ids).run();
+}
+
+export async function deleteDayAttendance(env, telegramId, dayStartIso, dayEndIso) {
+  await env.DB.prepare(
+    "DELETE FROM attendance WHERE telegram_id = ? AND check_in >= ? AND check_in < ?"
+  ).bind(telegramId, dayStartIso, dayEndIso).run();
+}
