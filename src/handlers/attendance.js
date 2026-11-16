@@ -92,7 +92,7 @@ export async function handleAppendAttendance({ env, chatId, user, commands = [] 
       if (entry.type !== "/in" || exit.type !== "/out") throw new Error("ترتیب هر شیفت باید /in و سپس /out باشد.");
       const start = new Date(entry.value.at).getTime(), end = new Date(exit.value.at).getTime();
       if (end <= start) throw new Error("زمان خروج باید بعد از ورود همان شیفت باشد.");
-      if (shifts.length && start < new Date(shifts[shifts.length - 1].check_out).getTime()) throw new Error("شیفت‌های جدید با یکدیگر هم‌پوشانی دارند.");
+      // هم‌پوشانی بین جفت‌های جدید نیز مجاز است؛ در نمای نهایی به یک بازه تبدیل می‌شوند.
       shifts.push({ check_in: entry.value.at, check_out: exit.value.at, duration_minutes: Math.round((end - start) / 60000) });
     }
     const bounds = getDayBounds(dayKey, tz);
@@ -192,23 +192,25 @@ export async function handleAttendanceCallback({ env, callback, user }) {
   return sendMessage(env, callback.message?.chat?.id, "✅ تمام " + shifts.length + " شیفت روز " + formatDate(bounds.dayStart, tz) + " حذف شدند.");
 }
 
+// تاریخ و ساعت جداگانه شناسایی می‌شوند؛ ترتیب نوشتن آن‌ها و نوع ارقام اهمیتی ندارد.
 function parseAttendanceTimestamp(args, tz) {
-  const numbers = normalizeDigits((args || []).join(" ")).match(/\d+/g) || [];
-  if (numbers.length !== 2 && numbers.length !== 5) {
+  const parts = (args || []).map(normalizeDigits);
+  const dateIndex = parts.findIndex((value) => /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/.test(value));
+  const timeIndex = parts.findIndex((value) => /^\d{1,2}[:.]\d{1,2}$/.test(value));
+  if (timeIndex < 0) {
     throw new Error("ساعت را وارد کن و در صورت نیاز تاریخ را هم بنویس؛ نمونه: /in 16:00 1405.8.20");
   }
 
-  const hour = Number(numbers[0]);
-  const minute = Number(numbers[1]);
+  const [hour, minute] = parts[timeIndex].split(/[:.]/).map(Number);
   if (hour > 23 || minute > 59) throw new Error("ساعت واردشده معتبر نیست.");
 
   const now = new Date();
   const todayKey = localDateKey(now.toISOString(), tz);
-  const hasExplicitDate = numbers.length === 5;
-  const dayKey = hasExplicitDate ? parseDateKey(numbers.slice(2).join("/")) : todayKey;
+  const hasExplicitDate = dateIndex >= 0;
+  const dayKey = hasExplicitDate ? parseDateKey(parts[dateIndex]) : todayKey;
+  if (parts.length !== (hasExplicitDate ? 2 : 1)) throw new Error("فقط یک ساعت و در صورت نیاز یک تاریخ وارد کن.");
 
   if (dayKey > todayKey) throw new Error("ثبت ساعت برای تاریخ آینده مجاز نیست.");
-
   const at = localDateTimeToIso(dayKey, hour, minute, tz);
   if (new Date(at).getTime() > now.getTime()) {
     throw new Error("زمان واردشده در آینده است و امکان ثبت آن وجود ندارد.");
