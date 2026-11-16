@@ -1,5 +1,6 @@
 import { sendMessage } from "../telegram.js";
-import { getOpenShift, getOpenShiftOnDate, checkIn, checkOut, replaceDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
+import { getOpenShift, getOpenShiftOnDate, getShiftsOnDate, checkIn, checkOut, appendDayAttendance, deleteShiftsByIds, deleteDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
+import { answerCallback } from "../telegram.js";
 import { formatTime, formatDuration, formatToman, formatDate, startOfLocalDayIso, startOfLocalMonthIso, localDateKey } from "../utils/time.js";
 
 export const HOURLY_RATE_TOMAN = 16000;
@@ -100,6 +101,98 @@ export async function handleReplaceAttendance({ env, chatId, user, commands = []
   } catch (error) {
     return sendMessage(env, chatId, `⚠️ ${error.message}\nنمونه: /in 16:00 1405.8.20\n/out 21:30 1405.8.20`);
   }
+}
+
+
+function getDayBounds(dayKey, tz) {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1, 12)).toISOString().slice(0, 10);
+  return { dayStart: localDateTimeToIso(dayKey, 0, 0, tz), dayEnd: localDateTimeToIso(next, 0, 0, tz) };
+}
+
+export async function handleAppendAttendance({ env, chatId, user, commands = [] }) {
+  if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
+  const tz = env.TIMEZONE || "Asia/Tehran";
+  try {
+    if (!commands.length || commands.length % 2 !== 0) throw new Error("برای هر ورود باید خروج همان شیفت را هم وارد کنی؛ سوابق قبلی حفظ می‌شوند.");
+    const parsed = commands.map((item) => ({ type: item.command, value: parseAttendanceTimestamp(item.args, tz) }));
+    if (parsed.some((x) => !x.value.hasExplicitDate)) throw new Error("برای ثبت چند شیفت، تاریخ را در تمام دستورها بنویس.");
+    const dayKey = parsed[0].value.dayKey;
+    if (parsed.some((x) => x.value.dayKey !== dayKey)) throw new Error("تمام دستورها باید مربوط به یک تاریخ باشند.");
+    const shifts = [];
+    for (let i = 0; i < parsed.length; i += 2) {
+      const entry = parsed[i], exit = parsed[i + 1];
+      if (entry.type !== "/in" || exit.type !== "/out") throw new Error("ترتیب هر شیفت باید /in و سپس /out باشد.");
+      const start = new Date(entry.value.at).getTime(), end = new Date(exit.value.at).getTime();
+      if (end <= start) throw new Error("زمان خروج باید بعد از ورود همان شیفت باشد.");
+      if (shifts.length && start < new Date(shifts[shifts.length - 1].check_out).getTime()) throw new Error("شیفت‌های جدید با یکدیگر هم‌پوشانی دارند.");
+      shifts.push({ check_in: entry.value.at, check_out: exit.value.at, duration_minutes: Math.round((end - start) / 60000) });
+    }
+    const bounds = getDayBounds(dayKey, tz);
+    const existing = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
+    const all = [...existing, ...shifts].sort((x, y) => new Date(x.check_in) - new Date(y.check_in));
+    for (let i = 1; i < all.length; i++) {
+      const previousEnd = all[i - 1].check_out ? new Date(all[i - 1].check_out).getTime() : Date.now();
+      if (new Date(all[i].check_in).getTime() < previousEnd) throw new Error("زمان شیفت جدید با یکی از شیفت‌های ثبت‌شده هم‌پوشانی دارد؛ ابتدا با /info شیفت‌های آن روز را بررسی کن.");
+    }
+    await appendDayAttendance(env, user.telegram_id, shifts);
+    const total = shifts.reduce((sum, x) => sum + x.duration_minutes, 0);
+    return sendMessage(env, chatId, "✅ " + shifts.length + " شیفت جدید به " + formatDate(shifts[0].check_in, tz) + " اضافه شد.\nشیفت‌های قبلی تغییری نکردند.\n⏱ مجموع زمان شیفت‌های جدید: " + formatDuration(total));
+  } catch (error) {
+    return sendMessage(env, chatId, "⚠️ " + error.message + "\nنمونه:\n/in 09:00 1405/08/24\n/out 12:00 1405/08/24");
+  }
+}
+
+export async function handleInfo({ env, chatId, user, args = [] }) {
+  if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
+  try {
+    if (args.length !== 1) throw new Error("تاریخ را وارد کن؛ نمونه: /info 1405/08/24");
+    const tz = env.TIMEZONE || "Asia/Tehran";
+    const dayKey = parseDateKey(args[0]);
+    const bounds = getDayBounds(dayKey, tz);
+    const shifts = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
+    if (!shifts.length) return sendMessage(env, chatId, "برای " + formatDate(bounds.dayStart, tz) + " هیچ شیفتی ثبت نشده است.");
+    const lines = shifts.map((s, i) => (i + 1) + ". " + formatTime(s.check_in, tz) + " تا " + (s.check_out ? formatTime(s.check_out, tz) : "🔴 هنوز باز") + " — " + (s.duration_minutes != null ? formatDuration(s.duration_minutes) : "در حال محاسبه"));
+    const total = shifts.reduce((sum, s) => sum + Number(s.duration_minutes || 0), 0);
+    return sendMessage(env, chatId, "📋 شیفت‌های " + formatDate(bounds.dayStart, tz) + "\n\n" + lines.join("\n") + "\n\nتعداد شیفت: " + shifts.length + "\n⏱ مجموع شیفت‌های بسته: " + formatDuration(total));
+  } catch (error) { return sendMessage(env, chatId, "⚠️ " + error.message); }
+}
+
+export async function handleDeleteAttendance({ env, chatId, user, args = [] }) {
+  if (!employeeOnly(user)) return sendMessage(env, chatId, "این بخش فقط برای حساب‌های کارمندی فعال است.");
+  try {
+    if (!args.length) throw new Error("نمونه: /delete 1405/08/24 یا /delete 1405/08/24 1 3");
+    const tz = env.TIMEZONE || "Asia/Tehran";
+    const dayKey = parseDateKey(args[0]);
+    const bounds = getDayBounds(dayKey, tz);
+    const shifts = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
+    if (!shifts.length) return sendMessage(env, chatId, "برای این تاریخ شیفتی پیدا نشد.");
+    if (args.length === 1) {
+      return sendMessage(env, chatId, "⚠️ تأیید حذف تمام " + shifts.length + " شیفت روز " + formatDate(bounds.dayStart, tz) + "\nاین کار قابل بازگشت نیست. مطمئنی؟", {
+        reply_markup: { inline_keyboard: [[{ text: "🗑 بله، حذف همه شیفت‌ها", callback_data: "attdel:" + dayKey }], [{ text: "انصراف", callback_data: "attcancel" }]] }
+      });
+    }
+    const indexes = args.slice(1).map(x => Number(normalizeDigits(x)));
+    if (indexes.some(n => !Number.isInteger(n) || n < 1 || n > shifts.length)) throw new Error("شماره شیفت باید بین ۱ تا " + shifts.length + " باشد. برای دیدن شماره‌ها /info " + args[0] + " را بزن.");
+    const unique = [...new Set(indexes)];
+    await deleteShiftsByIds(env, user.telegram_id, unique.map(n => shifts[n - 1].id));
+    return sendMessage(env, chatId, "✅ شیفت‌های " + unique.sort((x, y) => x - y).join("، ") + " از " + formatDate(bounds.dayStart, tz) + " حذف شدند.");
+  } catch (error) { return sendMessage(env, chatId, "⚠️ " + error.message); }
+}
+
+export async function handleAttendanceCallback({ env, callback, user }) {
+  const data = String(callback.data || "");
+  await answerCallback(env, callback.id);
+  if (!employeeOnly(user)) return;
+  if (data === "attcancel") return sendMessage(env, callback.message?.chat?.id, "حذف لغو شد؛ اطلاعات تغییری نکرد.");
+  const match = data.match(/^attdel:(\d{4}-\d{2}-\d{2})$/);
+  if (!match) return;
+  const tz = env.TIMEZONE || "Asia/Tehran";
+  const bounds = getDayBounds(match[1], tz);
+  const shifts = await getShiftsOnDate(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
+  if (!shifts.length) return sendMessage(env, callback.message?.chat?.id, "شیفتی برای حذف باقی نمانده است.");
+  await deleteDayAttendance(env, user.telegram_id, bounds.dayStart, bounds.dayEnd);
+  return sendMessage(env, callback.message?.chat?.id, "✅ تمام " + shifts.length + " شیفت روز " + formatDate(bounds.dayStart, tz) + " حذف شدند.");
 }
 
 function parseAttendanceTimestamp(args, tz) {
