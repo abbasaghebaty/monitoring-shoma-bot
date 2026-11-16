@@ -1,7 +1,7 @@
 import { sendMessage } from "./telegram.js";
 import { getUser, ensureKnownUsers } from "./db/users.js";
 import { handleStart, handleHelp } from "./handlers/start.js";
-import { handleCheckIn, handleCheckOut, handleReplaceAttendance, handleStatus } from "./handlers/attendance.js";
+import { handleCheckIn, handleCheckOut, handleAppendAttendance, handleInfo, handleDeleteAttendance, handleAttendanceCallback, handleStatus } from "./handlers/attendance.js";
 import { handleAddUser, handleListUsers, handleReport, handleChart } from "./handlers/admin.js";
 import {
   handleProducts, handleProductAdd, handlePurchase, handleSale, handleDebtPayment,
@@ -16,6 +16,8 @@ const COMMANDS = [
   { names: ["/vorud", "/in", "ورود", "🔵 ورود"], run: handleCheckIn },
   { names: ["/khoruj", "/out", "خروج", "🔴 خروج"], run: handleCheckOut },
   { names: ["/status", "وضعیت"], run: handleStatus },
+  { names: ["/info"], run: handleInfo },
+  { names: ["/delete"], run: handleDeleteAttendance },
   { names: ["/users", "کاربران"], run: handleListUsers, owner: true },
   { names: ["/adduser"], run: handleAddUser, owner: true },
   { names: ["/report", "گزارش امروز"], run: (ctx) => handleReport({ ...ctx, days: 1 }), owner: true },
@@ -44,6 +46,7 @@ export async function routeUpdate(update, env) {
     if (!user || !user.is_active) {
       return sendMessage(env, callback.message?.chat?.id, "⛔ حساب شما غیرفعال است.");
     }
+    if (String(callback.data || "").startsWith("att")) return handleAttendanceCallback({ env, callback, user });
     return handleShopCallback({ env, callback, user });
   }
   const msg = update.message;
@@ -57,25 +60,15 @@ export async function routeUpdate(update, env) {
   const chatId = msg.chat.id;
   if (!user || !user.is_active) return sendMessage(env, chatId, "⛔ حساب شما در سیستم ثبت نشده یا غیرفعال است.");
 
-  // پیام‌های دارای تاریخ صریح، برنامه کامل همان روز را جایگزین می‌کنند.
+  // ثبت چند شیفت تاریخی به‌صورت افزایشی؛ سوابق قبلی هرگز جایگزین نمی‌شوند.
   const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const attendanceLines = lines.map((line) => {
     const match = line.match(/^(\/in|\/out)(?:@\w+)?\s*(.*)$/i);
     if (!match) return null;
     return { command: match[1].toLowerCase(), args: match[2].trim().split(/\s+/).filter(Boolean) };
   });
-  if (attendanceLines.length && attendanceLines.every(Boolean)) {
-    const hasExplicitDate = attendanceLines.some((item) => (item.args.join(" ").match(/\d+/g) || []).length === 5);
-    // یک دستور تکی، حتی با تاریخ صریح، باید مستقل اجرا شود؛
-    // جایگزینی برنامه روزانه فقط برای چند دستور در یک پیام است.
-    if (lines.length > 1 && hasExplicitDate) return handleReplaceAttendance({ env, msg, chatId, user, commands: attendanceLines });
-    if (lines.length > 1) {
-      for (const item of attendanceLines) {
-        const handler = item.command === "/in" ? handleCheckIn : handleCheckOut;
-        await handler({ env, msg, args: item.args, user, chatId });
-      }
-      return;
-    }
+  if (attendanceLines.length && attendanceLines.every(Boolean) && lines.length > 1) {
+    return handleAppendAttendance({ env, msg, chatId, user, commands: attendanceLines });
   }
 
   const ctx = { env, msg, args, user, chatId };
