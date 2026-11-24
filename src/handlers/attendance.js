@@ -3,7 +3,7 @@ import { getOpenShift, getOpenShiftOnDate, getShiftsOnDate, checkIn, checkOut, a
 import { formatTime, formatDuration, formatToman, formatDate, startOfLocalDayIso, startOfLocalMonthIso, localDateKey } from "../utils/time.js";
 import { mergeAttendanceIntervals } from "../utils/attendance.js";
 
-export const HOURLY_RATE_TOMAN = 16000;
+export const HOURLY_RATE_TOMAN = 17000;
 
 // ورودی‌های متنی تلگرام را مستقل از شکل ارقام و جداکننده‌ها به داده استاندارد تبدیل می‌کنیم.
 function employeeOnly(user) {
