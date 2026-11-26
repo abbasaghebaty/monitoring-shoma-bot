@@ -1,3 +1,6 @@
+// فقط این دو حساب در تقسیم حقوق فروشنده‌ها شرکت می‌کنند؛ سایر کارکنان صرفاً حضور و غیاب دارند.
+export const PAYROLL_EMPLOYEE_IDS = Object.freeze([7548075013, 8842657623]);
+
 const KNOWN_USERS = [
   { telegramId: 7548075013, fullName: "عباس", role: "employee" },
   { telegramId: 8842657623, fullName: "صادق", role: "employee" },
