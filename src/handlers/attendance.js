@@ -288,9 +288,9 @@ export async function handleStatus({ env, chatId, user }) {
   const todayIncome = todayPayroll[employeeKey]?.incomeToman || 0;
   const monthIncome = monthPayroll[employeeKey]?.incomeToman || 0;
   const incomeSummary = payrollEligible
-    ? `📊 مانیتورینگ درآمد (با تقسیم زمان هم‌پوشان)\\n💰 درآمد امروز: ${formatToman(todayIncome)}\\n💰 درآمد این ماه: ${formatToman(monthIncome)}`
+    ? `📊 مانیتورینگ درآمد (با تقسیم زمان هم‌پوشان)\n💰 درآمد امروز: ${formatToman(todayIncome)}\n💰 درآمد این ماه: ${formatToman(monthIncome)}`
     : "📊 این حساب مشمول محاسبه حقوق نیست؛ اطلاعات حضور و غیاب همچنان ثبت می‌شود.";
   return sendMessage(env, chatId,
-    `📅 ${formatDate(now.toISOString(), tz)}\\n\\n${state}\\nمجموع ساعت ثبت‌شده امروز: ${formatDuration(Math.max(done, todayWorked))}\\n\\n${incomeSummary}\\n⏱ مجموع ساعت کارکرد این ماه: ${formatDuration(monthWorked)}`
+    `📅 ${formatDate(now.toISOString(), tz)}\n\n${state}\nمجموع ساعت ثبت‌شده امروز: ${formatDuration(Math.max(done, todayWorked))}\n\n${incomeSummary}\n⏱ مجموع ساعت کارکرد این ماه: ${formatDuration(monthWorked)}`
   );
 }
