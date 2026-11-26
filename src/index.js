@@ -1,9 +1,8 @@
 import { routeUpdate } from "./router.js";
 import { HOURLY_RATE_TOMAN } from "./handlers/attendance.js";
-import { workedMinutesSince } from "./db/attendance.js";
+import { workedMinutesSince, payrollDistributionSince } from "./db/attendance.js";
+import { PAYROLL_EMPLOYEE_IDS } from "./db/users.js";
 import { startOfLocalMonthIso, formatToman } from "./utils/time.js";
-
-const PERSONAL_EMPLOYEE_NAME = "عباس";
 
 async function handleMonthlyIncomeApi(request, env) {
   if (!env.ACCOUNTING_API_TOKEN) {
@@ -14,28 +13,32 @@ async function handleMonthlyIncomeApi(request, env) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { results } = await env.DB.prepare(
-    "SELECT telegram_id FROM users WHERE full_name = ? AND role = 'employee' AND is_active = 1 LIMIT 2"
-  ).bind(PERSONAL_EMPLOYEE_NAME).all();
-  if (!results || results.length !== 1) {
-    return Response.json({ error: "Employee account is missing or ambiguous" }, { status: 409 });
+  const employeeId = PAYROLL_EMPLOYEE_IDS[0];
+  const employee = await env.DB.prepare(
+    "SELECT full_name FROM users WHERE telegram_id = ? AND role = 'employee' AND is_active = 1"
+  ).bind(employeeId).first();
+  if (!employee) {
+    return Response.json({ error: "Employee account is missing or inactive" }, { status: 409 });
   }
 
   const tz = env.TIMEZONE || "Asia/Tehran";
   const now = new Date();
   const monthStart = startOfLocalMonthIso(now, tz);
-  const minutes = await workedMinutesSince(env, results[0].telegram_id, monthStart);
-  const income = Math.round(minutes * HOURLY_RATE_TOMAN / 60);
+  const minutes = await workedMinutesSince(env, employeeId, monthStart);
+  const payroll = await payrollDistributionSince(env, monthStart, HOURLY_RATE_TOMAN);
+  const employeePayroll = payroll[String(employeeId)] || { allocatedMinutes: 0, incomeToman: 0 };
+  const income = employeePayroll.incomeToman;
   const month = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
     timeZone: tz, month: "long", year: "numeric"
   }).format(now);
 
   return Response.json({
-    employee: PERSONAL_EMPLOYEE_NAME,
+    employee: employee.full_name,
     month,
     minutes,
     hours: Math.round(minutes / 60 * 10) / 10,
     hourlyRateToman: HOURLY_RATE_TOMAN,
+    allocatedMinutes: Math.round(employeePayroll.allocatedMinutes),
     incomeToman: income,
     incomeFormatted: formatToman(income),
     updatedAt: now.toISOString()
