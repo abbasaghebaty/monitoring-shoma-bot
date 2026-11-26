@@ -6,6 +6,7 @@ import { workedMinutesSince, payrollDistributionSince } from "./db/attendance.js
 import { PAYROLL_EMPLOYEE_IDS } from "./db/users.js";
 import { startOfLocalMonthIso, formatToman } from "./utils/time.js";
 
+// API فقط‌خواندنی درآمد ماهانه عباس را با همان منطق تقسیم حقوقِ فرمان وضعیت محاسبه می‌کند.
 async function handleMonthlyIncomeApi(request, env) {
   if (!env.ACCOUNTING_API_TOKEN) {
     return Response.json({ error: "API is not configured" }, { status: 503 });
