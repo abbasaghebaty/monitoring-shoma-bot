@@ -2,6 +2,8 @@ import { sendMessage, answerCallback } from "../telegram.js";
 import { getOpenShift, getOpenShiftOnDate, getShiftsOnDate, checkIn, checkOut, appendDayAttendance, deleteShiftsByIds, deleteDayAttendance, todayMinutes, workedMinutesSince } from "../db/attendance.js";
 import { formatTime, formatDuration, formatToman, formatDate, startOfLocalDayIso, startOfLocalMonthIso, localDateKey } from "../utils/time.js";
 import { mergeAttendanceIntervals } from "../utils/attendance.js";
+import { payrollDistributionSince } from "../db/attendance.js";
+import { PAYROLL_EMPLOYEE_IDS } from "../db/users.js";
 
 export const HOURLY_RATE_TOMAN = 17000;
 
@@ -280,9 +282,16 @@ export async function handleStatus({ env, chatId, user }) {
   const todayWorked = await workedMinutesSince(env, user.telegram_id, todayStart);
   const monthWorked = await workedMinutesSince(env, user.telegram_id, monthStart);
   const state = shift ? `🟢 ورود ثبت‌شده: ${formatTime(shift.check_in, tz)}` : "🔴 در حال حاضر شیفت بازی ندارید.";
-  const todayIncome = todayWorked * HOURLY_RATE_TOMAN / 60;
-  const monthIncome = monthWorked * HOURLY_RATE_TOMAN / 60;
+  const todayPayroll = await payrollDistributionSince(env, todayStart, HOURLY_RATE_TOMAN);
+  const monthPayroll = await payrollDistributionSince(env, monthStart, HOURLY_RATE_TOMAN);
+  const employeeKey = String(user.telegram_id);
+  const payrollEligible = PAYROLL_EMPLOYEE_IDS.includes(Number(user.telegram_id));
+  const todayIncome = todayPayroll[employeeKey]?.incomeToman || 0;
+  const monthIncome = monthPayroll[employeeKey]?.incomeToman || 0;
+  const incomeSummary = payrollEligible
+    ? `📊 مانیتورینگ درآمد (با تقسیم زمان هم‌پوشان)\\n💰 درآمد امروز: ${formatToman(todayIncome)}\\n💰 درآمد این ماه: ${formatToman(monthIncome)}`
+    : "📊 این حساب مشمول محاسبه حقوق نیست؛ اطلاعات حضور و غیاب همچنان ثبت می‌شود.";
   return sendMessage(env, chatId,
-    `📅 ${formatDate(now.toISOString(), tz)}\n\n${state}\nمجموع ساعت ثبت‌شده امروز: ${formatDuration(Math.max(done, todayWorked))}\n\n📊 مانیتورینگ درآمد\n💰 درآمد امروز: ${formatToman(todayIncome)}\n💰 درآمد این ماه: ${formatToman(monthIncome)}\n⏱ مجموع ساعت کارکرد این ماه: ${formatDuration(monthWorked)}`
+    `📅 ${formatDate(now.toISOString(), tz)}\\n\\n${state}\\nمجموع ساعت ثبت‌شده امروز: ${formatDuration(Math.max(done, todayWorked))}\\n\\n${incomeSummary}\\n⏱ مجموع ساعت کارکرد این ماه: ${formatDuration(monthWorked)}`
   );
 }
