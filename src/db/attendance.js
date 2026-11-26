@@ -1,4 +1,5 @@
 import { mergeAttendanceIntervals } from "../utils/attendance.js";
+import { PAYROLL_EMPLOYEE_IDS } from "./users.js";
 
 export async function getOpenShift(env, telegramId) {
   return env.DB.prepare(
@@ -82,4 +83,61 @@ export async function deleteDayAttendance(env, telegramId, dayStartIso, dayEndIs
   await env.DB.prepare(
     "DELETE FROM attendance WHERE telegram_id = ? AND check_in >= ? AND check_in < ?"
   ).bind(telegramId, dayStartIso, dayEndIso).run();
+}
+
+
+// درآمد را بر اساس زمان حضور هم‌زمان دو کارمند مشمول حقوق تقسیم می‌کند.
+// ابتدا بازه‌های خام هر فرد جداگانه ادغام می‌شوند تا ثبت‌های تکراری یک نفر حقوق مضاعف نسازند.
+// سپس خط زمانی به قطعه‌های بدون تغییرِ تعداد افراد حاضر شکسته می‌شود؛ هر قطعه فقط یک نرخ ساعتی دارد.
+export async function payrollDistributionSince(env, sinceIso, hourlyRateToman) {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const { results } = await env.DB.prepare(
+    `SELECT id, telegram_id, check_in, check_out
+     FROM attendance
+     WHERE telegram_id IN (?, ?)
+       AND check_in < ?
+       AND (check_out >= ? OR check_out IS NULL)`
+  ).bind(...PAYROLL_EMPLOYEE_IDS, nowIso, sinceIso).all();
+
+  const rangeStart = new Date(sinceIso).getTime();
+  const rangeEnd = now.getTime();
+  const intervalsByEmployee = Object.fromEntries(PAYROLL_EMPLOYEE_IDS.map((id) => [
+    String(id),
+    mergeAttendanceIntervals(
+      (results || []).filter((row) => Number(row.telegram_id) === id),
+      { from: rangeStart, to: rangeEnd }
+    )
+  ]));
+
+  const boundaries = [...new Set(
+    Object.values(intervalsByEmployee).flatMap((items) =>
+      items.flatMap((item) => [item.start, item.end])
+    )
+  )].sort((a, b) => a - b);
+
+  const allocatedMilliseconds = Object.fromEntries(PAYROLL_EMPLOYEE_IDS.map((id) => [String(id), 0]));
+
+  // در هر قطعه، نرخ پایه فروشگاه فقط یک بار بین افراد واجد شرایطِ حاضر تقسیم می‌شود.
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const start = boundaries[index];
+    const end = boundaries[index + 1];
+    if (end <= start) continue;
+
+    const activeIds = PAYROLL_EMPLOYEE_IDS.filter((id) =>
+      intervalsByEmployee[String(id)].some((item) => item.start <= start && item.end >= end)
+    );
+    if (!activeIds.length) continue;
+
+    const share = (end - start) / activeIds.length;
+    for (const id of activeIds) allocatedMilliseconds[String(id)] += share;
+  }
+
+  return Object.fromEntries(PAYROLL_EMPLOYEE_IDS.map((id) => {
+    const allocatedMs = allocatedMilliseconds[String(id)];
+    return [String(id), {
+      allocatedMinutes: allocatedMs / 60000,
+      incomeToman: Math.round(allocatedMs * hourlyRateToman / 3600000)
+    }];
+  }));
 }
