@@ -270,6 +270,7 @@ export async function handleCheckOut({ env, chatId, user, args = [] }) {
   return sendMessage(env, chatId, `🔴 خروج ثبت شد\n🕒 ${formatTime(now, env.TIMEZONE)}\n⏱ مدت این شیفت: ${formatDuration(minutes)}`);
 }
 
+// وضعیت حضور و زمان شخصی را نشان می‌دهد؛ مبلغ حقوق از تابع تقسیم بازه‌های مشترک گرفته می‌شود.
 export async function handleStatus({ env, chatId, user }) {
   if (!employeeOnly(user)) return sendMessage(env, chatId, "وضعیت حضور فقط برای حساب‌های کارمندی است.");
   const tz = env.TIMEZONE || "Asia/Tehran";
